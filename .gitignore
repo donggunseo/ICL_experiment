@@ -1,5 +1,8 @@
 __pycache__/
-prob/
-result/
+result*/
 *.ipynb
 *.sh
+finetune_model/
+SBERT_emb/
+Finetune_confidence/
+LLM_confidence/

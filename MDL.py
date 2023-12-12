@@ -1,11 +1,16 @@
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 import random
 from datasets import load_dataset
 from tqdm import tqdm
-import json
 import pickle
+from transformers import AutoModelForCausalLM, LlamaTokenizer, AutoConfig, AutoTokenizer
+import argparse
+from utils import set_seed
+import torch
+import os
+import numpy as np
 
-class ICL_dataset(Dataset):
+class ICL_MDL_dataset(Dataset):
     def __init__(self, args):
         self.args = args
         if args.data=="CR":
@@ -80,21 +85,11 @@ class ICL_dataset(Dataset):
 
         self.train_label = self.train_data['label']
         self.train_sentence = self.train_data['sentence']
-        if self.args.selection == "whole_random":
-            print("sample demonstration randomly without stratify")
-            self.whole_random_sample(args.n_shot)
-        elif self.args.selection == "random":
-            print("sample demonstration randomly")
-            self.random_sample(args.n_shot)
-        elif self.args.selection == "finetune_confidence" or self.args.selection == "LLM_confidence":
-            print(f"sample demosntration by {self.args.selection} score order")
-            self.confidence_sample(args.n_shot, mode=self.args.selection)
-        elif self.args.selection == "knn":
-            print("sample demonstration by knn")
-            self.knn_sample(args.n_shot)
-        elif self.args.selection == "knn_stratify":
-            print("sample demonstration by knn_stratify")
-            self.knn_stratify_sample(args.n_shot)
+        self.candidates = 100
+        self.num_org = 10
+        self.knn_mdl_sample(args.n_shot)
+        self.dev_data = {'sentence': [item for item in self.dev_data['sentence'] for _ in range(self.num_org)], 
+                         'label' : [item for item in self.dev_data['label'] for _ in range(self.num_org)]}
         
         if self.args.data == "sst2":
             self.template=self.template_sst2
@@ -111,93 +106,19 @@ class ICL_dataset(Dataset):
         elif self.args.data=="agnews":
             self.template = self.template_agnews
     
-    def whole_random_sample(self, n_shot):
-        idx = [i for i in range(len(self.train_label))]
-        data_subsample = random.sample(idx, min(n_shot*len(self.id2verb), len(idx)))
-        random.shuffle(data_subsample)
-        print(data_subsample)
-        self.demonstration_data = {"sentence" : [self.train_sentence[i] for i in data_subsample], 
-                           "label" : [self.train_label[i] for i in data_subsample]}
-        
-    def random_sample(self, n_shot):
-        data_by_cls = {}
-        for i in range(len(self.train_label)):
-            if self.train_label[i] not in data_by_cls:
-                data_by_cls[self.train_label[i]] = []
-            data_by_cls[self.train_label[i]].append(i)
-        data_subsample = []
-        for cls in data_by_cls.keys():
-            data_subsampled_by_cls = random.sample(data_by_cls[cls], min(n_shot, len(data_by_cls[cls])))
-            data_subsample.extend(data_subsampled_by_cls)
-        random.shuffle(data_subsample)
-        print(data_subsample)
-        self.demonstration_data = {"sentence" : [self.train_sentence[i] for i in data_subsample], 
-                           "label" : [self.train_label[i] for i in data_subsample]}
-        
-    def confidence_sample(self, n_shot, mode):
-        data_by_cls = {}
-        for i in range(len(self.train_label)):
-            if self.train_label[i] not in data_by_cls:
-                data_by_cls[self.train_label[i]] = []
-            data_by_cls[self.train_label[i]].append(i)
-        if mode == "finetune_confidence":
-            with open(f"./Finetune_confidence/{self.args.data}_finetune.json", 'r') as f:
-                confidence = json.load(f)
-        elif mode == "LLM_confidence":
-            with open(f"./LLM_confidence/{self.args.llm}/{self.args.data}_finetune.json", 'r') as f:
-                confidence = json.load(f)
-        confidence = sorted(confidence.items(), key = lambda item: -item[1]['confidence_score'])
-        data_subsample = []
-        for cls in data_by_cls.keys():
-            data_subsampled_by_cls = []
-            for item in confidence:
-                if int(item[0]) in data_by_cls[cls]:
-                    data_subsampled_by_cls.append(int(item[0]))
-                else:
-                    continue
-                if len(data_subsampled_by_cls)==n_shot:
-                    break
-            data_subsample.extend(data_subsampled_by_cls)
-        random.shuffle(data_subsample)
-        print(data_subsample)
-        self.demonstration_data = {"sentence" : [self.train_data['sentence'][i] for i in data_subsample], 
-                           "label" : [self.train_data['label'][i] for i in data_subsample]}
-    
-    def knn_sample(self, n_shot):
+    def knn_mdl_sample(self, n_shot):
         with open(f'./SBERT_emb/{self.args.data}_train_dev_knn_indices.pickle', 'rb') as f:
             knn_indices = pickle.load(f)
         self.demonstration_data = []
-        k = n_shot * len(self.id2verb) ## we do not consider stratify class, so add n_shot * n_classes for total demonstrations
+        k = n_shot ## we do not consider stratify class, so add n_shot * n_classes for total demonstrations
         for i in tqdm(range(len(self.dev_data['label']))):
-            knn_indice = knn_indices[i][:k]
-            random.shuffle(knn_indice)
-            self.demonstration_data.append({"sentence" : [self.train_sentence[i] for i in knn_indice], "label" : [self.train_label[i] for i in knn_indice]})
-
-    def knn_stratify_sample(self, n_shot):
-        with open(f'./SBERT_emb/{self.args.data}_train_dev_knn_indices.pickle', 'rb') as f:
-            knn_indices = pickle.load(f)
-        data_by_cls = {}
-        for i in range(len(self.train_label)):
-            if self.train_label[i] not in data_by_cls:
-                data_by_cls[self.train_label[i]] = []
-            data_by_cls[self.train_label[i]].append(i)
-        self.demonstration_data = []
-        for i in tqdm(range(len(self.dev_data['label']))):
-            data_subsample=[]
-            knn_indice = knn_indices[i]
-            for cls in data_by_cls.keys():
-                data_subsampled_by_cls = []
-                for idx in knn_indice:
-                    if idx in data_by_cls[cls]:
-                        data_subsampled_by_cls.append(idx)
-                    else:
-                        continue
-                    if len(data_subsampled_by_cls)==n_shot:
-                        break
-                data_subsample.extend(data_subsampled_by_cls)
-            random.shuffle(data_subsample)
-            self.demonstration_data.append({"sentence" : [self.train_sentence[i] for i in data_subsample], "label" : [self.train_label[i] for i in data_subsample]})
-
+            knn_indice = knn_indices[i][:self.candidates]
+            cand = []
+            for _ in range(self.num_org):
+                data_subsample = random.sample(list(knn_indice), k)
+                random.shuffle(data_subsample)
+                cand.append({"sentence" : [self.train_sentence[i] for i in data_subsample], "label" : [self.train_label[i] for i in data_subsample]})
+            self.demonstration_data.extend(cand)
 
     def template_sst2(self, sentence, label=None, mode='train'):
         if mode == 'train':
@@ -236,24 +157,93 @@ class ICL_dataset(Dataset):
             return f"Input: {sentence}\nTopic: "
 
     def __len__(self):
-        return len(self.dev_data['sentence'])
+        return len(self.dev_data['sentence']) 
     
     def __getitem__(self, idx):
         prompt = ''
-        if self.args.selection == "random" or self.args.selection == "finetune_confidence" or self.args.selection == "LLM_confidence" or self.args.selection == "whole_random":
-            for s, l in zip(self.demonstration_data['sentence'], self.demonstration_data['label']):
-                prompt+=self.template(s,l, mode='train')
-                prompt += '\n'
-            prompt+=self.template(self.dev_data['sentence'][idx], mode = 'inference')
-            label = self.dev_data['label'][idx]
-            return (prompt, label)
-        elif self.args.selection == "knn" or self.args.selection == "knn_stratify":
-            for s, l in zip(self.demonstration_data[idx]['sentence'], self.demonstration_data[idx]['label']):
-                prompt+=self.template(s,l, mode='train')
-                prompt += '\n'
-            prompt+=self.template(self.dev_data['sentence'][idx], mode = 'inference')
-            label = self.dev_data['label'][idx]
-            return (prompt, label)
+        for s, l in zip(self.demonstration_data[idx]['sentence'], self.demonstration_data[idx]['label']):
+            prompt+=self.template(s,l, mode='train')
+            prompt += '\n'
+        prompt+=self.template(self.dev_data['sentence'][idx], mode = 'inference')
+        label = self.dev_data['label'][idx]
+        return (prompt, label)
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="In-Context Learning baseline.")
+    parser.add_argument("--llm", type=str, default='llama2_7b')
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--data", type=str, default="sst2")
+    parser.add_argument("--n_shot", type=int, default=20)
+    args = parser.parse_args()
 
+    return args
 
+model_dict ={
+    "llama2_7b" : "meta-llama/Llama-2-7b-hf",
+    "llama2_13b" : "meta-llama/Llama-2-13b-hf",
+    "opt_6.7b" : "facebook/opt-6.7b",
+    "gpt2_xl" : "gpt2-xl"
+}
+
+def main():
+    args = parse_args()
+    set_seed(args)
+    dataset = ICL_MDL_dataset(args)
+    num_org = dataset.num_org
+    id2verb = dataset.id2verb
+    dataloader = DataLoader(dataset, batch_size = num_org, shuffle=False)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    tokenizer = LlamaTokenizer.from_pretrained(model_dict[args.llm]) if "llama" in args.llm else AutoTokenizer.from_pretrained(model_dict[args.llm])
+    tokenizer.padding_side = "left"
+    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.pad_token_id = tokenizer.eos_token_id
+    model_config = AutoConfig.from_pretrained(model_dict[args.llm])
+    model = AutoModelForCausalLM.from_pretrained(model_dict[args.llm], config = model_config)
+    model.to(device)
+    model.eval()
+    all_pred = []
+    all_ref = []
+    for batch in tqdm(dataloader):
+        prompt = batch[0]
+        label = batch[1].tolist()
+        inputs = tokenizer(prompt, return_tensors="pt", padding=True).to(device=model.device)
+        with torch.no_grad():
+            logits = model.forward(input_ids=inputs['input_ids'],
+                                    attention_mask=inputs['attention_mask'],
+                                    return_dict=True).logits.detach().cpu()
+        gen_logits = logits[:, -1, :]
+        prob_per_cls = []
+        for label_verb in id2verb:
+            if args.llm!="gpt2_xl":
+                label_verb_token_id = tokenizer.encode(label_verb)[1] 
+            else:
+                label_verb_token_id = tokenizer.encode(label_verb)[0]
+            prob_per_cls.append(gen_logits[:, label_verb_token_id])
+        prob = torch.stack(prob_per_cls, dim=1)
+        pred = torch.argmax(prob, dim=-1).tolist()
+        prob = torch.softmax(prob, dim=-1).numpy()
+        logp = np.log2(prob)
+        entropy = np.sum(-prob*logp, axis=-1)
+        min_idx = np.argmin(entropy)
+        all_pred.append(pred[min_idx])
+        all_ref.append(label[0])
+    cnt=0
+    for i in range(len(all_pred)):
+        if all_pred[i]==all_ref[i]:
+            cnt+=1
+        else:
+            continue
+    accuracy = cnt/len(all_pred)
+    print(accuracy)
+    result_dir = f"./result_mdl/{args.llm}"
+    os.makedirs(result_dir, exist_ok=True)
+    result_file_path = f"{result_dir}/{args.data}_{args.n_shot}shot.txt"
+    if not os.path.isfile(result_file_path):
+        with open(result_file_path, 'w') as f:
+            f.write(f"{args.seed} : {accuracy}\n")
+    else:
+        with open(result_file_path, 'a') as f:
+            f.write(f"{args.seed} : {accuracy}\n")
+
+if __name__ == "__main__":
+    main()
