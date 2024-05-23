@@ -1,6 +1,5 @@
 __pycache__/
 result*/
-*.ipynb
 *.sh
 finetune_model/
 SBERT_emb/
