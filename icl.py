@@ -82,7 +82,6 @@ def prompt_generation(datasets, demon_idx, args):
     return prompt_list
 
 def main():
-    # login(token='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')
     args = parse_args()
     set_seed(args)
     datasets = ICL_dataset(args)
