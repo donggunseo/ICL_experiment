@@ -16,10 +16,9 @@ def demon_select(datasets, args):
         quotient = args.n_shot//len(datasets.id2verb)
         data_subsample = []
         if quotient == 0: ## n_shot is smaller than label space size
-            # chosen_cls = random.sample(list(datasets.id2label.keys(), args.n_shot))
-            # for cls in chosen_cls:
-            #     data_subsample.append(random.choice(data_by_cls[cls]))
-            sys.exit(f"we can not stratify because label space size {len(datasets.id2verb)} is larger than n_shots {args.n_shot}")
+            chosen_cls = random.sample(list(datasets.id2label.keys()), args.n_shot)
+            for cls in chosen_cls:
+                data_subsample.append(random.choice(data_by_cls[cls]))
         else: ## n_shot is greater than label space size, we need to figure out remainder
             remainder = args.n_shot%len(datasets.id2verb)
             for cls in data_by_cls.keys():
@@ -39,7 +38,7 @@ def demon_select(datasets, args):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = SentenceTransformer('sentence-transformers/all-mpnet-base-v2').to(device)
         print("Start generate embedding")
-        if args.data=="wnli" or args.data=="rte":
+        if datasets.args.single is False:
             train_sentences = [" ".join(t[0]) for t in datasets.train_data.values()]
             dev_sentences =  [" ".join(t[0]) for t in datasets.dev_data.values()]
         else:
@@ -50,6 +49,96 @@ def demon_select(datasets, args):
         del model
         print("calculating cosine similarity")
         cosine_scores = np.array(util.cos_sim(dev_embedding, train_embedding))
+        sim_idx = np.argsort(cosine_scores, axis=1)[:,::-1]
+        demon_idx = sim_idx[:,:args.n_shot].tolist()
+        demon_idx = [[list(datasets.train_data.keys())[t] for t in l] for l in demon_idx]
+        data_subsample = demon_idx
+        rank = [[i for i in range(args.n_shot)] for _ in range(len(demon_idx))]
+        return data_subsample, rank
+    elif args.selection == "pair_similar":
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model = SentenceTransformer('sentence-transformers/all-mpnet-base-v2').to(device)
+        print("Start generate premise embedding")
+        premise_train_sentences = [t[0][0] for t in datasets.train_data.values()]
+        premise_dev_sentences =  [t[0][0] for t in datasets.dev_data.values()]
+        premise_train_embedding = model.encode(premise_train_sentences, batch_size=2)
+        premise_dev_embedding = model.encode(premise_dev_sentences, batch_size=2)
+        print("calculating premise cosine similarity")
+        premise_cosine_scores = np.array(util.cos_sim(premise_dev_embedding, premise_train_embedding))
+        print("Start generate hypothesis embedding")
+        hypothesis_train_sentences = [t[0][1] for t in datasets.train_data.values()]
+        hypothesis_dev_sentences =  [t[0][1] for t in datasets.dev_data.values()]
+        hypothesis_train_embedding = model.encode(hypothesis_train_sentences, batch_size=2)
+        hypothesis_dev_embedding = model.encode(hypothesis_dev_sentences, batch_size=2)
+        print("calculating premise cosine similarity")
+        hypothesis_cosine_scores = np.array(util.cos_sim(hypothesis_dev_embedding, hypothesis_train_embedding))
+        del model
+        cosine_scores = premise_cosine_scores+hypothesis_cosine_scores
+        sim_idx = np.argsort(cosine_scores, axis=1)[:,::-1]
+        demon_idx = sim_idx[:,:args.n_shot].tolist()
+        demon_idx = [[list(datasets.train_data.keys())[t] for t in l] for l in demon_idx]
+        data_subsample = demon_idx
+        rank = [[i for i in range(args.n_shot)] for _ in range(len(demon_idx))]
+        return data_subsample, rank
+    elif args.selection == "pair_one_similar":
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model = SentenceTransformer('sentence-transformers/all-mpnet-base-v2').to(device)
+        print("Start generate embedding")
+        if datasets.args.single is False:
+            train_sentences = [t[0][0] for t in datasets.train_data.values()]
+            dev_sentences =  [t[0][0] for t in datasets.dev_data.values()]
+        train_embedding = model.encode(train_sentences, batch_size=2)
+        dev_embedding = model.encode(dev_sentences, batch_size=2)
+        del model
+        print("calculating cosine similarity")
+        cosine_scores = np.array(util.cos_sim(dev_embedding, train_embedding))
+        sim_idx = np.argsort(cosine_scores, axis=1)[:,::-1]
+        demon_idx = sim_idx[:,:args.n_shot].tolist()
+        demon_idx = [[list(datasets.train_data.keys())[t] for t in l] for l in demon_idx]
+        data_subsample = demon_idx
+        rank = [[i for i in range(args.n_shot)] for _ in range(len(demon_idx))]
+        return data_subsample, rank
+    elif args.selection == "pair_one_similar2":
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model = SentenceTransformer('sentence-transformers/all-mpnet-base-v2').to(device)
+        print("Start generate embedding")
+        if datasets.args.single is False:
+            train_sentences = [t[0][1] for t in datasets.train_data.values()]
+            dev_sentences =  [t[0][1] for t in datasets.dev_data.values()]
+        train_embedding = model.encode(train_sentences, batch_size=2)
+        dev_embedding = model.encode(dev_sentences, batch_size=2)
+        del model
+        print("calculating cosine similarity")
+        cosine_scores = np.array(util.cos_sim(dev_embedding, train_embedding))
+        sim_idx = np.argsort(cosine_scores, axis=1)[:,::-1]
+        demon_idx = sim_idx[:,:args.n_shot].tolist()
+        demon_idx = [[list(datasets.train_data.keys())[t] for t in l] for l in demon_idx]
+        data_subsample = demon_idx
+        rank = [[i for i in range(args.n_shot)] for _ in range(len(demon_idx))]
+        return data_subsample, rank
+    elif args.selection == "cross_pair_similar":
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model = SentenceTransformer('sentence-transformers/all-mpnet-base-v2').to(device)
+        print("Start generate premise embedding")
+        premise_train_sentences = [t[0][0] for t in datasets.train_data.values()]
+        premise_dev_sentences =  [t[0][0] for t in datasets.dev_data.values()]
+        premise_train_embedding = model.encode(premise_train_sentences, batch_size=2)
+        premise_dev_embedding = model.encode(premise_dev_sentences, batch_size=2)
+        print("Start generate hypothesis embedding")
+        hypothesis_train_sentences = [t[0][1] for t in datasets.train_data.values()]
+        hypothesis_dev_sentences =  [t[0][1] for t in datasets.dev_data.values()]
+        hypothesis_train_embedding = model.encode(hypothesis_train_sentences, batch_size=2)
+        hypothesis_dev_embedding = model.encode(hypothesis_dev_sentences, batch_size=2)
+        print("calculating premise-premise cosine similarity")
+        p_p_cosine_scores = np.array(util.cos_sim(premise_dev_embedding, premise_train_embedding))
+        print("calculating hypothesis-hypothesis cosine similarity")
+        h_h_cosine_scores = np.array(util.cos_sim(hypothesis_dev_embedding, hypothesis_train_embedding))
+        print("calculating premise-hypothesis cosine similarity")
+        p_h_cosine_scores = np.array(util.cos_sim(premise_dev_embedding, hypothesis_train_embedding))
+        print("calculating hypothesis-premise cosine similarity")
+        h_p_cosine_scores = np.array(util.cos_sim(hypothesis_dev_embedding, premise_train_embedding))
+        del model
+        cosine_scores = np.max([p_p_cosine_scores, h_h_cosine_scores, p_h_cosine_scores, h_p_cosine_scores], axis=0)
         sim_idx = np.argsort(cosine_scores, axis=1)[:,::-1]
         demon_idx = sim_idx[:,:args.n_shot].tolist()
         demon_idx = [[list(datasets.train_data.keys())[t] for t in l] for l in demon_idx]

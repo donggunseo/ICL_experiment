@@ -1,6 +1,4 @@
 __pycache__/
-result*/
-*.sh
 finetune_model/
 SBERT_emb/
 Finetune_confidence/

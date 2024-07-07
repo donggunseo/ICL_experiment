@@ -1,0 +1,57 @@
+{
+  "builder_name": "parquet",
+  "citation": "",
+  "config_name": "default",
+  "dataset_name": "medical_questions_pairs",
+  "dataset_size": 702404,
+  "description": "",
+  "download_checksums": {
+    "hf://datasets/medical_questions_pairs@d91d9da9b2a843fc09ab9d48568d2a93bf58bd0d/data/train-00000-of-00001.parquet": {
+      "num_bytes": 313704,
+      "checksum": null
+    }
+  },
+  "download_size": 313704,
+  "features": {
+    "dr_id": {
+      "dtype": "int32",
+      "_type": "Value"
+    },
+    "question_1": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "question_2": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "label": {
+      "names": [
+        0,
+        1
+      ],
+      "_type": "ClassLabel"
+    },
+    "idx": {
+      "dtype": "int64",
+      "_type": "Value"
+    }
+  },
+  "homepage": "",
+  "license": "",
+  "size_in_bytes": 1016108,
+  "splits": {
+    "train": {
+      "name": "train",
+      "num_bytes": 702404,
+      "num_examples": 3048,
+      "dataset_name": "medical_questions_pairs"
+    }
+  },
+  "version": {
+    "version_str": "0.0.0",
+    "major": 0,
+    "minor": 0,
+    "patch": 0
+  }
+}

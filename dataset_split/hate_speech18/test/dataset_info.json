@@ -1,0 +1,63 @@
+{
+  "builder_name": "parquet",
+  "citation": "@inproceedings{gibert2018hate,\n    title = \"{Hate Speech Dataset from a White Supremacy Forum}\",\n    author = \"de Gibert, Ona  and\n      Perez, Naiara  and\n      Garcia-Pablos, Aitor  and\n      Cuadros, Montse\",\n    booktitle = \"Proceedings of the 2nd Workshop on Abusive Language Online ({ALW}2)\",\n    month = oct,\n    year = \"2018\",\n    address = \"Brussels, Belgium\",\n    publisher = \"Association for Computational Linguistics\",\n    url = \"https://www.aclweb.org/anthology/W18-5102\",\n    doi = \"10.18653/v1/W18-5102\",\n    pages = \"11--20\",\n}\n",
+  "config_name": "default",
+  "dataset_name": "hate_speech18",
+  "dataset_size": 1380804,
+  "description": "These files contain text extracted from Stormfront, a white supremacist forum. A random set of\nforums posts have been sampled from several subforums and split into sentences. Those sentences\nhave been manually labelled as containing hate speech or not, according to certain annotation guidelines.\n",
+  "download_checksums": {
+    "hf://datasets/hate_speech18@3c59dffccef268cb9b744f62ac412a98b637c19f/default/train/0000.parquet": {
+      "num_bytes": 772648,
+      "checksum": null
+    }
+  },
+  "download_size": 772648,
+  "features": {
+    "text": {
+      "dtype": "string",
+      "_type": "Value"
+    },
+    "user_id": {
+      "dtype": "int64",
+      "_type": "Value"
+    },
+    "subforum_id": {
+      "dtype": "int64",
+      "_type": "Value"
+    },
+    "num_contexts": {
+      "dtype": "int64",
+      "_type": "Value"
+    },
+    "label": {
+      "names": [
+        "noHate",
+        "hate",
+        "idk/skip",
+        "relation"
+      ],
+      "_type": "ClassLabel"
+    },
+    "idx": {
+      "dtype": "int64",
+      "_type": "Value"
+    }
+  },
+  "homepage": "https://github.com/Vicomtech/hate-speech-dataset",
+  "license": "",
+  "size_in_bytes": 2153452,
+  "splits": {
+    "train": {
+      "name": "train",
+      "num_bytes": 1380804,
+      "num_examples": 10944,
+      "dataset_name": "hate_speech18"
+    }
+  },
+  "version": {
+    "version_str": "0.0.0",
+    "major": 0,
+    "minor": 0,
+    "patch": 0
+  }
+}
